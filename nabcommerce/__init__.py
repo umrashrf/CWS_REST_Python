@@ -1,6 +1,5 @@
-from api import Nabcommerce
-
-from error import NabError
+from .api import Nabcommerce
+from .error import NabError
 
 
 if __name__ == '__main__':
