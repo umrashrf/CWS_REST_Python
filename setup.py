@@ -9,5 +9,8 @@ setup(
     url='https://nabvelocity.com/',
     description='Python wrapper for NABVelocity\'s REST API',
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
-    zip_safe=False
+    zip_safe=False,
+    install_requires=[
+        'six',
+    ],
 )
