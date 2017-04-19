@@ -19,68 +19,69 @@ logger = logging.getLogger(__name__)
 
 class Nabcommerce():
     URL = 'api.cert.nabcommerce.com'
-    ENDPOINT='/REST/2.0.18'
-    TMS_REST_SCHEMA=",http://schemas.ipcommerce.com/CWS/v2.0/DataServices/TMS/Rest"
-    TXN_REST_SCHEMA=",http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Rest"
+    ENDPOINT = '/REST/2.0.18'
+    TMS_REST_SCHEMA = ",http://schemas.ipcommerce.com/CWS/v2.0/DataServices/TMS/Rest"
+    TXN_REST_SCHEMA = ",http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Rest"
 
-    def __init__ (self, identity_token):
-        self.identity_token=identity_token
-        self.application_id=""
-        self.session_token=""
-        self.profile_id=""
-        self.revalidate=True
-        self.ready_state=0
-        self.renew_time=0
+    def __init__(self, identity_token):
+        self.identity_token = identity_token
+        self.application_id = ""
+        self.session_token = ""
+        self.profile_id = ""
+        self.revalidate = True
+        self.ready_state = 0
+        self.renew_time = 0
 
-        self.identity_token=identity_token
+        self.identity_token = identity_token
 
         logger.debug("Trying to sign on...")
-        self.__sign_on_with_token();
-        in_where="to nabcommerce constructor"
+        self.__sign_on_with_token()
+        in_where = "to nabcommerce constructor"
 
         if not self.__validate_session():
-            if self.ready_state==0:
-                error = "Please provide a valid identity token "+ in_where +"."
+            if self.ready_state == 0:
+                error = "Please provide a valid identity token " + in_where + "."
             else:
-                error = "Please ensure the identity token provided "+ in_where+ " is valid."
+                error = "Please ensure the identity token provided " + in_where + " is valid."
             raise NabError(error)
 
-
     def __sign_on_with_token(self):
-        self.ready_state=0
-        self.renew_time=0
-        self.session_token=self.identity_token
+        self.ready_state = 0
+        self.renew_time = 0
+        self.session_token = self.identity_token
         #logger.debug("Signing on...")
-        self.session_token=self.__tokenized_action("GET","SvcInfo/token")
-        if (self.session_token!=None): self.ready_state=1
-        #We can now check if an identity token was returned.
+        self.session_token = self.__tokenized_action("GET", "SvcInfo/token")
+        if (self.session_token != None):
+            self.ready_state = 1
+        # We can now check if an identity token was returned.
         if (self.__validate_session()):
-            return True #logger.debug("Done",""); true
+            return True  # logger.debug("Done",""); true
         else:
             return False
             #logger.debug("Failed",""); false
 
-
     def __validate_session(self, revalidate=None):
-        #Setting ready_state to zero prevents any automatic signons, and all subsequent calls to
+        # Setting ready_state to zero prevents any automatic signons, and all subsequent calls to
         #logger.debug("validate_session", revalidate)
-        if revalidate==None:
-            revalidate=self.revalidate
-        if self.ready_state==1:
+        if revalidate == None:
+            revalidate = self.revalidate
+        if self.ready_state == 1:
             # A session token lasts thirty minutes.
             # The ruby implementation reads the session token, and gets the
-            # Expiration directly. This can be done by xmlparsing the base64 decoded saml token.
-            self.renew_time=time.time()+1500 # 25 minutes to be safe
+            # Expiration directly. This can be done by xmlparsing the base64
+            # decoded saml token.
+            self.renew_time = time.time() + 1500  # 25 minutes to be safe
 
-            self.ready_state=2
+            self.ready_state = 2
             logger.debug("Session saved")
-        elif (self.ready_state>=2):
+        elif (self.ready_state >= 2):
             if (self.renew_time <= time.time()):
                 if not revalidate:
                     return False
                 if (self.renew_time > time.time()):
-                    logger.debug("Expired session was renewed by another process.")
-                    return True;
+                    logger.debug(
+                        "Expired session was renewed by another process.")
+                    return True
                 logger.debug("Expired session will be renewed.")
                 self.__sign_on_with_token()
         else:
@@ -89,184 +90,188 @@ class Nabcommerce():
 
     def __tokenized_action(self, method, path, body=None, isoDate=False):
 
-        conn= httplib.HTTPSConnection(self.URL)
+        conn = httplib.HTTPSConnection(self.URL)
         if body != None:
             if isoDate:
-                dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime.datetime) else None
+                def dthandler(obj): return obj.isoformat() if isinstance(
+                    obj, datetime.datetime) else None
             else:
-                dthandler = lambda obj: "/Date("+str(int(time.mktime(obj.timetuple())))+"000)/" if isinstance(obj, datetime.datetime) else None
-            body=json.dumps(body, default=dthandler, sort_keys=True)
+                def dthandler(obj): return "/Date(" + str(int(time.mktime(obj.timetuple()))
+                                                          ) + "000)/" if isinstance(obj, datetime.datetime) else None
+            body = json.dumps(body, default=dthandler, sort_keys=True)
             #body=body.replace("$type", "__type");
             # Unforunately this is the most concise solution for ensuring __type is the first
             # element within the json body of a transaction.
 
-        headers=self.__header()
-
+        headers = self.__header()
 
         conn.set_debuglevel(1)
-        conn.request(method, self.ENDPOINT+"/"+path, body, headers)
-        logger.debug("conn.request(",method,", ",self.ENDPOINT+"/"+path,", ",body,",...)")
+        conn.request(method, self.ENDPOINT + "/" + path, body, headers)
+        logger.debug("conn.request(", method, ", ",
+                     self.ENDPOINT + "/" + path, ", ", body, ",...)")
 
-        response=conn.getresponse()
+        response = conn.getresponse()
 
         if str(response.status)[0] != "2":
             logger.debug(response.status, response.reason, response.read())
             return None
 
-        response=response.read()
-        #logger.debug(response)
+        response = response.read()
+        # logger.debug(response)
         if response[0] == "\"":
-            return response[1:-1] #remove quotes
+            return response[1:-1]  # remove quotes
         if response[0] == "{" or response[0] == "[":
             return json.loads(response)
         elif response[0] == "<":
-            raise NabError("An xml error was passed.\n"+response)
+            raise NabError("An xml error was passed.\n" + response)
         else:
             return response
         return None
 
     def __header(self):
+        # required
+        # if a non empty Accept header is sent,
+        # NAB server will send a text/xml response.
+        authstring = base64.b64encode(self.session_token + ":")
 
-        #required
-        #if a non empty Accept header is sent,
-        #NAB server will send a text/xml response.
-        authstring=base64.b64encode(self.session_token+":")
-
-        return {"Authorization":"Basic "+authstring, "Content-Type": "application/json"}
-
+        return {"Authorization": "Basic " + authstring, "Content-Type": "application/json"}
 
     ########################################################################
     #"""                    BEGIN SERVICE INFO                          """#
     ########################################################################
     def get_application_data(self, application_id=None, save=False):
         if not self.__validate_session():
-            return False;
+            return False
 
-        self.application_id=application_id
+        self.application_id = application_id
 
-        #logger.debug("Getting applicaton data for #{application_id}...")
-        application_data=self.__tokenized_action("GET", "SvcInfo/appProfile/"+application_id)
-        #if not error
-        #logger.debug("Result:",application_data,"Done")
+        # logger.debug("Getting applicaton data for #{application_id}...")
+        application_data = self.__tokenized_action(
+            "GET", "SvcInfo/appProfile/" + application_id)
+        # if not error
+        # logger.debug("Result:",application_data,"Done")
         if save:
-            self.application_id=application_id
+            self.application_id = application_id
         return application_data
 
+    # Requires application_data which contains an xml
 
-    #Requires application_data which contains an xml
-
-#This value is received from a one-time call to save_application_data()
-#The value is linked to your PTLS Socket Id, and will not change after initial setup.
+# This value is received from a one-time call to save_application_data()
+# The value is linked to your PTLS Socket Id, and will not change after
+# initial setup.
     def save_application_data(self, application_data):
 
         if not self.__validate_session():
             return False
 
         #logger.debug("Saving applicaton data...")
-        result=self.__tokenized_action("PUT", "SvcInfo/appProfile", application_data)
+        result = self.__tokenized_action(
+            "PUT", "SvcInfo/appProfile", application_data)
         #logger.debug("Result:" + result)
 
-        self.application_id=result["id"]
-        #logger.debug("Done")
+        self.application_id = result["id"]
+        # logger.debug("Done")
         return self.application_id
-
 
     def delete_application_data(self, application_id=0, force=False):
         if not self.__validate_session():
-            return False;
-        if (self.application_id==application_id and not force):
-            #logger.debug("Possible accidental deletion of current running application prevented.","Call delete_application_data(#{application_id}, true) to override.")
+            return False
+        if (self.application_id == application_id and not force):
+            # logger.debug("Possible accidental deletion of current running
+            # application prevented.","Call
+            # delete_application_data(#{application_id}, true) to override.")
             return
 
         #logger.debug("Deleting applicaton profile...")
-        if not self.__tokenized_action("DELETE", "SvcInfo/appProfile/"+application_id):
+        if not self.__tokenized_action("DELETE", "SvcInfo/appProfile/" + application_id):
             return False
-        #logger.debug("Done")
+        # logger.debug("Done")
 
-        if (self.application_id==application_id):
-            self.application_id=None;
+        if (self.application_id == application_id):
+            self.application_id = None
         return application_id
 
-
-    #Complete 8/29/11 09:12
+    # Complete 8/29/11 09:12
     def get_service_information(self):
 
         if not self.__validate_session():
-            return False;
+            return False
 
         #logger.debug("Getting service information...")
 
-        services=self.__tokenized_action("GET","SvcInfo/serviceInformation")["BankcardServices"]
+        services = self.__tokenized_action(
+            "GET", "SvcInfo/serviceInformation")["BankcardServices"]
 
-        services_list=[];
+        services_list = []
         for svc in services:
-            services_list.append(self.service_name(svc["ServiceId"])+" ("+svc["ServiceId"]+")")
+            services_list.append(self.service_name(
+                svc["ServiceId"]) + " (" + svc["ServiceId"] + ")")
 
-        logger.debug(len(services)," Service(s) returned: ", ",".join(services_list))
-        #logger.debug("Result:",services)
+        logger.debug(len(services), " Service(s) returned: ",
+                     ",".join(services_list))
+        # logger.debug("Result:",services)
 
-        #logger.debug("Done",None)
+        # logger.debug("Done",None)
         return services
 
-
-    #Works 8/29/11 09:12
+    # Works 8/29/11 09:12
     def service_name(self, service_id):
-            #Sandbox
-        list={"214DF00001": "Chase Paymentech Orbital - Tampa",
-        "B51E100001": "Chase Paymentech Orbital - Salem",
-        "7B62B00001": "First Data - Nashville",
-        "786F400001": "Chase Paymentech Orbital - Tampa Retail",
-        "A656D00001": "First Data - Nashville US",
-        "4CACF00001": "Chase Tampa Direct TCS",
-        "3E2DE00001": "RBS Global Gateway",
-        "832E400001": "RBS Worldpay",
-        "C82ED00001": "TSYS Sierra",
-        "5A38100001": "Tampa - Canada",
-        "71C8700001": "TSYS Sierra Canada",
-        "8335000001": "TSYS Summit",
-        "A4F2B00001": "Salem Direct",
-        "E4FB800001": "First Data - Nashville",
-        "16E5800001": "Intuit QBMS",
-        "A8CFF00001": "First Data BUYPASS",
-        "36EBE00001": "Tampa TCS for Canada",
-        "6429C00001": "Intuit QBMS Inline Tokenization",
-        "8046100001": "Intuit QBMS No Tokenization",
-        "207CE00001": "Adaptive Payments",
-        "88D9300001": "Fifth Third Payment Services FTPS",
-        "8077500001": "Intuit QBMS Inline Tokenization",
-        "B447F00001": "Fifth Third Payment Services FTPS",
-        "D806000001": "Vantiv IBM",
-        "4365400001": "Vantiv Tandem",
-        #Production
-        "C97EF1300C": "Chase Paymentech Orbital - Tampa",
-        "8A4B91300C": "Chase Paymentech Orbital - Salem",
-        "19F161300C": "First Data - Nashville",
-        "3257B1300C": "Chase Paymentech Orbital - Tampa Retail",
-        "859AC1300C": "First Data - Nashville US",
-        "633511300C": "Chase Tampa Direct TCS",
-        "355931300C": "RBS Global Gateway",
-        "8CEA11300C": "RBS Worldpay",
-        "168511300C": "TSYS Sierra",
-        "852BB1300C": "Tampa - Canada",
-        "507BF1300C": "TSYS Sierra Canada",
-        "55C3C1300C": "TSYS Summit",
-        "D1DDF1300C": "Salem Direct",
-        "D917B1300C": "First Data - Nashville",
-        "7AC431300C": "Intuit QBMS",
-        "7B4DD1300C": "First Data BUYPASS",
-        "9461F1300C": "Tampa TCS for Canada",
-        "CE4AE1300C": "Intuit QBMS Inline Tokenization",
-        "E7DFB1300C": "Intuit QBMS No Tokenization",
-        "CAFF61300C": "Adaptive Payments",
-        "9999999999": "Fifth Third Payment Services FTPS" #To be implemented
-        }
+            # Sandbox
+        list = {"214DF00001": "Chase Paymentech Orbital - Tampa",
+                "B51E100001": "Chase Paymentech Orbital - Salem",
+                "7B62B00001": "First Data - Nashville",
+                "786F400001": "Chase Paymentech Orbital - Tampa Retail",
+                "A656D00001": "First Data - Nashville US",
+                "4CACF00001": "Chase Tampa Direct TCS",
+                "3E2DE00001": "RBS Global Gateway",
+                "832E400001": "RBS Worldpay",
+                "C82ED00001": "TSYS Sierra",
+                "5A38100001": "Tampa - Canada",
+                "71C8700001": "TSYS Sierra Canada",
+                "8335000001": "TSYS Summit",
+                "A4F2B00001": "Salem Direct",
+                "E4FB800001": "First Data - Nashville",
+                "16E5800001": "Intuit QBMS",
+                "A8CFF00001": "First Data BUYPASS",
+                "36EBE00001": "Tampa TCS for Canada",
+                "6429C00001": "Intuit QBMS Inline Tokenization",
+                "8046100001": "Intuit QBMS No Tokenization",
+                "207CE00001": "Adaptive Payments",
+                "88D9300001": "Fifth Third Payment Services FTPS",
+                "8077500001": "Intuit QBMS Inline Tokenization",
+                "B447F00001": "Fifth Third Payment Services FTPS",
+                "D806000001": "Vantiv IBM",
+                "4365400001": "Vantiv Tandem",
+                # Production
+                "C97EF1300C": "Chase Paymentech Orbital - Tampa",
+                "8A4B91300C": "Chase Paymentech Orbital - Salem",
+                "19F161300C": "First Data - Nashville",
+                "3257B1300C": "Chase Paymentech Orbital - Tampa Retail",
+                "859AC1300C": "First Data - Nashville US",
+                "633511300C": "Chase Tampa Direct TCS",
+                "355931300C": "RBS Global Gateway",
+                "8CEA11300C": "RBS Worldpay",
+                "168511300C": "TSYS Sierra",
+                "852BB1300C": "Tampa - Canada",
+                "507BF1300C": "TSYS Sierra Canada",
+                "55C3C1300C": "TSYS Summit",
+                "D1DDF1300C": "Salem Direct",
+                "D917B1300C": "First Data - Nashville",
+                "7AC431300C": "Intuit QBMS",
+                "7B4DD1300C": "First Data BUYPASS",
+                "9461F1300C": "Tampa TCS for Canada",
+                "CE4AE1300C": "Intuit QBMS Inline Tokenization",
+                "E7DFB1300C": "Intuit QBMS No Tokenization",
+                "CAFF61300C": "Adaptive Payments",
+                "9999999999": "Fifth Third Payment Services FTPS"  # To be implemented
+                }
         try:
             return list[service_id]
         except KeyError:
-            return "Service Id: "+service_id
-    #Requires merchant_profile which is an xml string or object implementing to_s()
-    #The rest endpoint can accept multiple merchant_profiles, however this function
-    #implements save_merchant_profiles for one profile for improved clarity.
+            return "Service Id: " + service_id
+    # Requires merchant_profile which is an xml string or object implementing to_s()
+    # The rest endpoint can accept multiple merchant_profiles, however this function
+    # implements save_merchant_profiles for one profile for improved clarity.
 
     def save_merchant_profile(self, merchant_profile, serviceId=None):
 
@@ -277,66 +282,67 @@ class Nabcommerce():
             return False
 
         #logger.debug("Saving merchant profiles...")
-        returnVal=self.__tokenized_action("PUT", "SvcInfo/merchProfile?serviceId="+serviceId,merchant_profiles)
+        returnVal = self.__tokenized_action(
+            "PUT", "SvcInfo/merchProfile?serviceId=" + serviceId, merchant_profiles)
 
         return returnVal
 
-        #logger.debug("Done")
-        #JSON.parse(returnVal)
+        # logger.debug("Done")
+        # JSON.parse(returnVal)
 
     def is_merchant_profile_initialized(self, merchant_profile_id, serviceId=None):
         if not self.__validate_session():
             return False
 
         #logger.debug("Checking if merchant profile is initialized...")
-        returnVal=self.__tokenized_action("GET", "SvcInfo/merchProfile?serviceId="+serviceId)
-        #logger.debug("Result:",returnVal)
+        returnVal = self.__tokenized_action(
+            "GET", "SvcInfo/merchProfile?serviceId=" + serviceId)
+        # logger.debug("Result:",returnVal)
 
-        #logger.debug("Done")
-        return returnVal=="true"
+        # logger.debug("Done")
+        return returnVal == "true"
 
     def get_merchant_profile(self, merchant_profile_id=None, serviceId=None):
         if not self.__validate_session():
             return False
 
         #logger.debug("Getting merchant profile...")
-        if (merchant_profile_id==None):
-            merchant_profile=self.__tokenized_action("GET", "SvcInfo/merchProfile?serviceId="+serviceId)
+        if (merchant_profile_id == None):
+            merchant_profile = self.__tokenized_action(
+                "GET", "SvcInfo/merchProfile?serviceId=" + serviceId)
         else:
-            merchant_profile=self.__tokenized_action("GET", "SvcInfo/merchProfile/"+merchant_profile_id+"?serviceId="+serviceId)
-        #logger.debug("Result:",merchant_profile)
+            merchant_profile = self.__tokenized_action(
+                "GET", "SvcInfo/merchProfile/" + merchant_profile_id + "?serviceId=" + serviceId)
+        # logger.debug("Result:",merchant_profile)
 
-        #logger.debug("Done")
+        # logger.debug("Done")
         return merchant_profile
 
-
     def delete_merchant_profile(self, merchant_profile_id, serviceId=None):
-        if type(merchant_profile_id)=="Dict":
-            merchant_profile_id=merchant_profile_id["ProfileId"]
+        if type(merchant_profile_id) == "Dict":
+            merchant_profile_id = merchant_profile_id["ProfileId"]
 
         if not self.__validate_session():
             return False
 
         #logger.debug("Deleting merchant profile...")
-        merchant_profile=self.__action_with_token("DELETE", "merchProfile",{
-            "target":merchant_profile_id,
-            "serviceId":serviceId
-            })
+        merchant_profile = self.__action_with_token("DELETE", "merchProfile", {
+            "target": merchant_profile_id,
+            "serviceId": serviceId
+        })
         return merchant_profile
     ########################################################################
     #"""                BEGIN TRANSACTION PROCESSING                    """#
     ########################################################################
 
-
     def authorize_and_capture(self, transaction, merchant_profile_id=None, workflow_id=None):
         if merchant_profile_id == None:
-            merchant_profile_id=self.merchant_profile_id
+            merchant_profile_id = self.merchant_profile_id
         if workflow_id == None:
-            workflow_id=self.workflow_id
+            workflow_id = self.workflow_id
 
-
-        request={
-            "$type": "AuthorizeAndCaptureTransaction"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "AuthorizeAndCaptureTransaction" + self.TXN_REST_SCHEMA,
             "SessionToken": self.session_token,
             "ApplicationProfileId": self.application_id,
             "MerchantProfileId": merchant_profile_id,
@@ -344,30 +350,31 @@ class Nabcommerce():
                 "$type": "BankcardTransaction,http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Bankcard"
             }
         }
-        logger.debug("\n\n",request)
-        #transaction["TransactionData"]["TransactionDateTime"]=transaction["TransactionData"]["TransactionDateTime"]
+        logger.debug("\n\n", request)
+        # transaction["TransactionData"]["TransactionDateTime"]=transaction["TransactionData"]["TransactionDateTime"]
         request["Transaction"].update(transaction)
-        logger.debug("\n\n",request)
+        logger.debug("\n\n", request)
 
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         logger.debug("Submitting authorize and capture...")
 
-        response=self.__tokenized_action("POST","Txn/"+workflow_id,request, True)
+        response = self.__tokenized_action(
+            "POST", "Txn/" + workflow_id, request, True)
         logger.debug("Done")
         logger.debug(response)
         return response
 
     def authorize(self, transaction, merchant_profile_id=None, workflow_id=None):
         if merchant_profile_id == None:
-            merchant_profile_id=self.merchant_profile_id
+            merchant_profile_id = self.merchant_profile_id
         if workflow_id == None:
-            workflow_id=self.workflow_id
+            workflow_id = self.workflow_id
 
-        request={
-            "$type": "AuthorizeTransaction"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "AuthorizeTransaction" + self.TXN_REST_SCHEMA,
             "SessionToken": self.session_token,
             "ApplicationProfileId": self.application_id,
             "MerchantProfileId": merchant_profile_id,
@@ -377,24 +384,25 @@ class Nabcommerce():
         }
         request["Transaction"].update(transaction)
         logger.debug(request)
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         logger.debug("Submitting authorize...")
-        response=self.__tokenized_action("POST","Txn/"+workflow_id,request, True)
+        response = self.__tokenized_action(
+            "POST", "Txn/" + workflow_id, request, True)
         logger.debug("Done")
         logger(response)
         return response
 
     def adjust(self, transaction_id, tip=0, workflow_id=None):
         if workflow_id == None:
-            workflow_id=self.workflow_id
+            workflow_id = self.workflow_id
 
-        request={
-            "$type": "Adjust"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "Adjust" + self.TXN_REST_SCHEMA,
             "ApplicationProfileId": self.application_id,
-            "DifferenceData":{
+            "DifferenceData": {
                 "$type": "Adjust,http://schemas.ipcommerce.com/CWS/v2.0/Transactions",
                 "TransactionId": transaction_id,
                 "TipAmount": tip,
@@ -408,19 +416,19 @@ class Nabcommerce():
             return False
 
         logger.debug("Submitting adjust...")
-        response=self.__tokenized_action("PUT","Txn/"+workflow_id,request, True)
+        response = self.__tokenized_action(
+            "PUT", "Txn/" + workflow_id, request, True)
         logger.debug("Done")
         return response
 
-    def undo(self, transaction_id,workflow_id):
+    def undo(self, transaction_id, workflow_id):
         if workflow_id == None:
-            workflow_id=self.workflow_id
+            workflow_id = self.workflow_id
 
-
-        request={
-            "$type": "Undo"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "Undo" + self.TXN_REST_SCHEMA,
             "ApplicationProfileId": self.application_id,
-            "DifferenceData":{
+            "DifferenceData": {
                 "$type": "BankcardUndo,http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Bankcard",
                 "TransactionId": transaction_id,
                 "Addendum": None,
@@ -433,17 +441,18 @@ class Nabcommerce():
             return False
 
         logger.debug("Submitting undo...")
-        response=self.__tokenized_action("PUT","Txn/"+workflow_id,request, True)
+        response = self.__tokenized_action(
+            "PUT", "Txn/" + workflow_id, request, True)
         logger.debug("Done")
         logger.debug(response)
         return response
 
-    #WORKS
+    # WORKS
     def capture(self, transaction_id, diff_data, merchant_profile_id, workflow_id):
-        request={
-            "$type": "Capture"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "Capture" + self.TXN_REST_SCHEMA,
             "ApplicationProfileId": self.application_id,
-            "DifferenceData":{
+            "DifferenceData": {
                 "$type": "BankcardCapture,http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Bankcard",
                 "TransactionId": transaction_id,
                 "Addendum": None
@@ -451,94 +460,98 @@ class Nabcommerce():
         }
 
         request["DifferenceData"].update(diff_data)
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         logger.debug("Submitting capture...")
 
-        response=self.__tokenized_action("PUT","Txn/"+workflow_id+"/"+transaction_id,request, True)
+        response = self.__tokenized_action(
+            "PUT", "Txn/" + workflow_id + "/" + transaction_id, request, True)
         logger.debug("Done")
         logger.debug(response)
         return response
 
     def capture_selective(self, merchant_profile_id, workflow_id, transaction_ids, difference_data=[]):
-        request={
-            "$type": "CaptureSelective"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "CaptureSelective" + self.TXN_REST_SCHEMA,
             "ApplicationProfileId": self.application_id,
-            "TransactionIds":transaction_ids,
-            "DifferenceData":difference_data
+            "TransactionIds": transaction_ids,
+            "DifferenceData": difference_data
         }
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         logger.debug("Submitting capture selective...")
 
-        response=self.__tokenized_action("PUT","Txn/"+workflow_id,request, True)
+        response = self.__tokenized_action(
+            "PUT", "Txn/" + workflow_id, request, True)
         logger.debug("Done")
         logger.debug(response)
         return response
 
-
     def capture_all(self, merchant_profile_id, workflow_id):
 
-        request={
-            "$type": "CaptureAll"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "CaptureAll" + self.TXN_REST_SCHEMA,
             "ApplicationProfileId": self.application_id,
             "BatchIds": [],
-            "MerchantProfileId":merchant_profile_id
+            "MerchantProfileId": merchant_profile_id
         }
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         logger.debug("Submitting capture all...")
-        response=self.__tokenized_action("PUT","Txn/"+workflow_id,request, True)
+        response = self.__tokenized_action(
+            "PUT", "Txn/" + workflow_id, request, True)
         logger.debug("Done")
         logger.debug(response)
         return response
 
     def return_by_id(self, transaction_id, diff_data, merchant_profile_id, workflow_id):
-        request={
-            "$type": "ReturnById"+self.TXN_REST_SCHEMA,
+        request = {
+            "$type": "ReturnById" + self.TXN_REST_SCHEMA,
             "ApplicationProfileId": self.application_id,
             "MerchantProfileId": merchant_profile_id,
-            "DifferenceData":{
+            "DifferenceData": {
                 "$type": "BankcardReturn,http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Bankcard",
                 "TransactionId": transaction_id,
                 "Addendum": None
             }
         }
         request["DifferenceData"].update(diff_data)
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         logger.debug("Submitting return by id...")
-        response=self.__tokenized_action("POST","Txn/"+workflow_id,request, True)
+        response = self.__tokenized_action(
+            "POST", "Txn/" + workflow_id, request, True)
         logger.debug("Done")
         logger.debug(response)
         return response
 
     # Use extreme caution when using this.
     def return_unlinked(self, transaction, merchant_profile_id, workflow_id):
-        request={
-            "$type":"ReturnTransaction"+self.TXN_REST_SCHEMA,
-            "ApplicationProfileId":self.application_id,
-            "MerchantProfileId":merchant_profile_id,
-            "Transaction":{"$type":"BankcardTransaction,http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Bankcard"}
+        request = {
+            "$type": "ReturnTransaction" + self.TXN_REST_SCHEMA,
+            "ApplicationProfileId": self.application_id,
+            "MerchantProfileId": merchant_profile_id,
+            "Transaction": {"$type": "BankcardTransaction,http://schemas.ipcommerce.com/CWS/v2.0/Transactions/Bankcard"}
         }
         request["Transaction"].update(transaction)
 
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         #logger.debug("Submitting return unlinked...")
-        response=self.__tokenized_action("POST","Txn/"+workflow_id,request, True)
-        #logger.debug("Done")
-        #logger.debug(response)
+        response = self.__tokenized_action(
+            "POST", "Txn/" + workflow_id, request, True)
+        # logger.debug("Done")
+        # logger.debug(response)
         return response
 
     ########################################################################
@@ -546,140 +559,139 @@ class Nabcommerce():
     ########################################################################
 
     def query_transactions_families(self, args={}):
-        options={"capture_states":[0,1,2],"is_acknowledged":0,"query_type":1,
-            "start_date":datetime.datetime.now()-datetime.timedelta(1,0),"end_date":datetime.datetime.now(),"page":0,"page_size":50}
+        options = {"capture_states": [0, 1, 2], "is_acknowledged": 0, "query_type": 1,
+                   "start_date": datetime.datetime.now() - datetime.timedelta(1, 0), "end_date": datetime.datetime.now(), "page": 0, "page_size": 50}
 
         options.update(args)
 
-        request={
-            "$type": "QueryTransactionsFamilies"+self.TMS_REST_SCHEMA,
-            "PagingParameters":{
+        request = {
+            "$type": "QueryTransactionsFamilies" + self.TMS_REST_SCHEMA,
+            "PagingParameters": {
                 "$type": "PagingParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices",
-                "Page":0,
-                "PageSize":50,
+                "Page": 0,
+                "PageSize": 50,
             },
-            "QueryTransactionsParameters":{
+            "QueryTransactionsParameters": {
                 "$type": "QueryTransactionsParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices/TMS",
-                "CaptureStates":options["capture_states"],
-                "IsAcknowledged":options["is_acknowledged"],
-                "QueryType":options["query_type"],
-                "TransactionDateRange":{
-                    "EndDateTime":options["end_date"],
-                    "StartDateTime":options["start_date"]
+                "CaptureStates": options["capture_states"],
+                "IsAcknowledged": options["is_acknowledged"],
+                "QueryType": options["query_type"],
+                "TransactionDateRange": {
+                    "EndDateTime": options["end_date"],
+                    "StartDateTime": options["start_date"]
                 }
             }
         }
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         #logger.debug("Submitting Query Transactions Families...")
 
-        response=self.__tokenized_action("POST","DataServices/TMS/transactionsFamily", request)
-        #logger.debug("Done")
-        #logger.debug(response)
+        response = self.__tokenized_action(
+            "POST", "DataServices/TMS/transactionsFamily", request)
+        # logger.debug("Done")
+        # logger.debug(response)
         return response
 
     def query_batch(self, args={}):
-        options={"start_date":datetime.datetime.now()-datetime.timedelta(1,0),
-            "end_date":datetime.datetime.now(), "page":0,"page_size":50}
+        options = {"start_date": datetime.datetime.now() - datetime.timedelta(1, 0),
+                   "end_date": datetime.datetime.now(), "page": 0, "page_size": 50}
         options.update(args)
 
-
-
-        request={
-            "$type": "QueryBatch"+self.TMS_REST_SCHEMA,
-            "PagingParameters":{
+        request = {
+            "$type": "QueryBatch" + self.TMS_REST_SCHEMA,
+            "PagingParameters": {
                 "$type": "PagingParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices",
-                "Page":options["page"],
-                "PageSize":options["page_size"]
+                "Page": options["page"],
+                "PageSize": options["page_size"]
             },
-            "QueryBatchParameters":{
+            "QueryBatchParameters": {
                 "$type": "QueryBatchParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices/TMS",
-                "BatchDateRange":{
-                    "EndDateTime":options["end_date"],
-                    "StartDateTime":options["start_date"]
+                "BatchDateRange": {
+                    "EndDateTime": options["end_date"],
+                    "StartDateTime": options["start_date"]
                 }
             }
         }
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         #logger.debug("Submitting Query Batch...")
 
-        response=self.__tokenized_action("POST", "DataServices/TMS/batch", request)
-        #logger.debug("Done")
-        #logger.debug(response)
+        response = self.__tokenized_action(
+            "POST", "DataServices/TMS/batch", request)
+        # logger.debug("Done")
+        # logger.debug(response)
         return response
 
     def query_transactions_summary(self, args={}):
-        options={"capture_states":[1],"is_acknowledged":0,"query_type":1,
-            "start_date":datetime.datetime.now()-datetime.timedelta(1,0),"end_date":datetime.datetime.now(),"page":0,"page_size":50}
+        options = {"capture_states": [1], "is_acknowledged": 0, "query_type": 1,
+                   "start_date": datetime.datetime.now() - datetime.timedelta(1, 0), "end_date": datetime.datetime.now(), "page": 0, "page_size": 50}
 
         options.update(args)
 
-
-        request={
-            "$type": "QueryTransactionsSummary"+self.TMS_REST_SCHEMA,
-            "PagingParameters":{
+        request = {
+            "$type": "QueryTransactionsSummary" + self.TMS_REST_SCHEMA,
+            "PagingParameters": {
                 "$type": "PagingParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices",
-                "Page":options["page"],
-                "PageSize":options["page_size"]
+                "Page": options["page"],
+                "PageSize": options["page_size"]
             },
-            "QueryTransactionsParameters":{
+            "QueryTransactionsParameters": {
                 "$type": "QueryTransactionsParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices/TMS",
-                "CaptureStates":options["capture_states"],
-                "IsAcknowledged":options["is_acknowledged"],
-                "QueryType":options["query_type"],
-                "TransactionDateRange":{
-                    "EndDateTime":options["end_date"],
-                    "StartDateTime":options["start_date"]
+                "CaptureStates": options["capture_states"],
+                "IsAcknowledged": options["is_acknowledged"],
+                "QueryType": options["query_type"],
+                "TransactionDateRange": {
+                    "EndDateTime": options["end_date"],
+                    "StartDateTime": options["start_date"]
                 }
             }
         }
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         #logger.debug("Submitting Query Transactions Summary...")
 
-        response=self.__tokenized_action("POST","DataServices/TMS/transactionsSummary",request)
-        #logger.debug("Done")
-        #logger.debug(response)
-        return response;
+        response = self.__tokenized_action(
+            "POST", "DataServices/TMS/transactionsSummary", request)
+        # logger.debug("Done")
+        # logger.debug(response)
+        return response
 
     def query_transactions_detail(self, transaction_ids, args={}):
-        options={"include_related":0,"is_acknowledged":0,"query_type":1,
-            "start_date":datetime.datetime.now()-datetime.timedelta(1,0),"end_date":datetime.datetime.now(),"page":0,"page_size":50}
+        options = {"include_related": 0, "is_acknowledged": 0, "query_type": 1,
+                   "start_date": datetime.datetime.now() - datetime.timedelta(1, 0), "end_date": datetime.datetime.now(), "page": 0, "page_size": 50}
 
         options.update(args)
 
-
-
-        request={
-            "$type": "QueryTransactionsDetail"+self.TMS_REST_SCHEMA,
-            "PagingParameters":{
+        request = {
+            "$type": "QueryTransactionsDetail" + self.TMS_REST_SCHEMA,
+            "PagingParameters": {
                 "$type": "PagingParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices",
-                "Page":options["page"],
-                "PageSize":options["page_size"]
+                "Page": options["page"],
+                "PageSize": options["page_size"]
             },
-            "IncludeRelated":options["include_related"],
-            "QueryTransactionsParameters":{
+            "IncludeRelated": options["include_related"],
+            "QueryTransactionsParameters": {
                 "$type": "QueryTransactionsParameters:http://schemas.ipcommerce.com/CWS/v2.0/DataServices/TMS",
-                "IsAcknowledged":options["is_acknowledged"],
-                "QueryType":options["query_type"],
-                "TransactionIds":transaction_ids
+                "IsAcknowledged": options["is_acknowledged"],
+                "QueryType": options["query_type"],
+                "TransactionIds": transaction_ids
             },
-            "TransactionDetailFormat":2
+            "TransactionDetailFormat": 2
         }
-        #logger.debug(request)
+        # logger.debug(request)
         if not self.__validate_session():
             return False
 
         #logger.debug("Submitting Query Transactions Detail...")
 
-        response=self.__tokenized_action("POST","DataServices/TMS/transactionsDetail",request)
-        #logger.debug("Done")
-        #logger.debug(response)
+        response = self.__tokenized_action(
+            "POST", "DataServices/TMS/transactionsDetail", request)
+        # logger.debug("Done")
+        # logger.debug(response)
         return response
